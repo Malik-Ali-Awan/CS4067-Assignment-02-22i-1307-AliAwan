@@ -1,0 +1,152 @@
+services:
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand({ ping: 1 })"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+  postgres_db:
+    image: postgres:15
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: single_database
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+  user-service:
+    build: ./user-service
+    ports:
+      - "30001:5001"
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres_db:5432/single_database
+      PORT: 5001
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+  event-service:
+    build: ./event-service
+    ports:
+      - "30002:5002"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/eventdb
+      PORT: 5002
+    depends_on:
+      mongo:
+        condition: service_healthy
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+    #   interval: 10s
+    #   retries: 5
+    #   start_period: 10s
+
+  booking-service:
+    build: ./booking-service
+    ports:
+      - "30003:5003"
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres_db:5432/single_database
+      PORT: 5003
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      # event-service:
+      #   condition: service_healthy
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "5004:5004"
+    environment:
+      PORT: 5004
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      EMAIL_USER: aa5168602@gmail.com
+      EMAIL_PASS: isgv swmn bkqm uyza
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      # event-service:
+      #   condition: service_healthy
+      booking-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    
+
+  frontend:
+    build:
+      context: ./frontend-service/frontend  # Use the correct folder where package.json exists
+      dockerfile: Dockerfile
+    ports:
+      - "30173:5173"   # Serve the React app on port 5173
+    environment:
+      PORT: 5173
+    depends_on:
+      mongo:
+        condition: service_healthy
+      postgres_db:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+    # command: sh -c "npm install && npm run build"  # Ensure build process runs
+
+  rabbitmq:
+    image: rabbitmq:management
+    container_name: rabbitmq
+    ports:
+      - "15672:15672"  # Management console (optional)
+      - "5672:5672"    # RabbitMQ protocol
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+  # nginx:
+  #     image: nginx:alpine
+  #     container_name: nginx
+  #     volumes:
+  #       - ./frontend-service/frontend/dist:/usr/share/nginx/html   # Serve the built React app
+  #       - ./nginx.conf:/etc/nginx/nginx.conf  # Nginx configuration file
+  #     ports:
+  #       - "80:80"   # Expose Nginx on port 80
+  #     depends_on:
+  #       - frontend
+
+volumes:
+  mongo-data:
+  postgres-data:

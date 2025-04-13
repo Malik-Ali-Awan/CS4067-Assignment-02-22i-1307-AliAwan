@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: event-service
+  namespace: onlineeventbookingali
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-service
+  template:
+    metadata:
+      labels:
+        app: event-service
+    spec:
+      containers:
+        - name: event-service
+          image: 22i1307/event-service:latest  
+          ports:
+            - containerPort: 5002  
+        
+          env:
+            - name: MONGO_DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: mongodb-config
+                  key: MONGO_INITDB_DATABASE
+            - name: MONGO_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: MONGO_INITDB_ROOT_USERNAME
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: MONGO_INITDB_ROOT_PASSWORD
+            
+            # Other environment variables...
+            
+            # Add this environment variable to override the MongoDB connection
+            - name: MONGO_URI
+              value: "mongodb://mongodb-service:27017/events_db"
+
+            
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-service
+  namespace: onlineeventbookingali
+spec:
+  selector:
+    app: event-service
+  ports:
+    - port: 5002
+      targetPort: 5002 
+      nodePort: 30002  
+  type: NodePort  # Change to LoadBalancer if you need external access

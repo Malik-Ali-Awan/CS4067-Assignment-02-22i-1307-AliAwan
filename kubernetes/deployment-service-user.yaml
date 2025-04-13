@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: user-service
+  namespace: onlineeventbookingali
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: 22i1307/user-service:latest  
+          ports:
+            - containerPort: 5001  
+        
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: username
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+            - name: DATABASE_URL
+              value: "postgresql://$(DB_USER):$(DB_PASS)@postgres-service:5432/single_database"
+
+            - name: EVENT_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: mongodb-config
+                  key: EVENT_SERVICE_URL
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: onlineeventbookingali
+spec:
+  selector:
+    app: user-service
+  ports:
+    - port: 5001
+      targetPort: 5001 
+      nodePort: 30001  
+  type: NodePort  # Change to LoadBalancer if you need external access
